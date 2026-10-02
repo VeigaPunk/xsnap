@@ -1,10 +1,10 @@
-# Rinnegan — the user:hash credential
+# Rinnegan — the keys that open originals
 
-The rinnegan is xsnap's proprietary uploader credential. One string,
-granted to a human after Kimi OAuth, that both attributes (privately) and
-unlocks (exclusively) everything they paste.
+"Rinnegan" is the umbrella name for the credential that unlocks a paste's
+verbatim original. Possession is permission: lending your rinnegan to a
+regular ("lending your rinnegan'd eyes") lets them unlock what you locked.
 
-## Format
+## Form 1 — user:hash (ciphertext mode, classic CLI)
 
 ```
 <user>:<hash>
@@ -12,45 +12,54 @@ unlocks (exclusively) everything they paste.
  hash  = 64 hex = HMAC-SHA256(RINNEGAN_ISSUER_KEY, "rinnegan/v1:" + user)
 ```
 
-## Derived values (worker/rinnegan.ts)
+- Owner linkage: `HMAC(RINNEGAN_ISSUER_KEY, "owner/v1:"+user)` — stored in
+  D1, never rendered.
+- Wrap key: `HKDF-SHA256(hash, info="xsnap-wrap/v1")` → AES-256-GCM key for
+  the paste ciphertext.
+- Minting: prod = the Kimi-OAuth section of ufo-fsd.kimi.pro (Kimi hosted
+  on Alibaba), using the shared `RINNEGAN_ISSUER_KEY`; xsnap only verifies.
+  Dev = `POST /dev/rinnegan`.
+- Threat model: DB-dump-alone cannot decrypt; a server compromise
+  (DB + issuer key) can. v2 salted-hash upgrade noted below.
 
-| Value | Formula | Use |
-|---|---|---|
-| owner | `HMAC(RINNEGAN_ISSUER_KEY, "owner/v1:"+user)` | Private paste↔user linkage stored in D1 |
-| wrap key | `HKDF-SHA256(hash, info="xsnap-wrap/v1")` | AES-256-GCM key for the paste's original |
+## Form 2 — GitHub user:pass (plugin mode)
 
-Verification is stateless (recompute + constant-time compare); the server
-never stores the credential or its hash.
+For plugin publishes the original lives in the uploader's PRIVATE GitHub
+repo (`xsnap-<id>`, file `p/<id>/original.txt`). The rinnegan is merely the
+uploader's **GitHub user:pass** (username + PAT):
 
-## Minting
+- `/p/<id>/unlock` collects user + token and POSTs `/api/unlock`.
+- The server verifies the pair against `api.github.com/user`, requires
+  the login to own the paste, then reads the original from the private
+  repo. Credentials live in memory for the request only — never logged,
+  never stored.
+- xsnap never sees the original at ANY point in the plugin flow
+  (zero-knowledge by construction), and never sees the token outside the
+  unlock request.
+- Failure of any kind → the dialog redirects to https://ufo-fsd.kimi.pro/.
 
-- **Prod**: the Kimi-OAuth-gated section of `ufo-fsd.kimi.pro` (hosted on
-  Kimi/Alibaba). Contract for that surface:
-  1. User completes Kimi OAuth in the gated section.
-  2. Section derives `user` from the verified Kimi identity and computes
-     `hash` with the shared `RINNEGAN_ISSUER_KEY`.
-  3. Section displays the rinnegan ONCE; user stores it (password manager).
-  4. xsnap.app never mints — it only verifies with the same key.
-- **Dev**: `POST /dev/rinnegan {"user": "…"}` on a DEV-flagged server
-  (reference minting implementation: `mint()` in `worker/rinnegan.ts`).
+## The unlock dialog (both forms)
 
-## Threat model (v1, operator-selected: server-trusted)
+The paste page carries a `[169,13,13]` red **wetehuna** button that opens
+the decryptor dialog (Windows-XP-Luna-styled; the theater is cosmetic, the
+ownership check is real). One input:
 
-| Attacker | Sees originals? |
-|---|---|
-| Public web / crawlers / scrapers | Never — only the mi rendering |
-| DB dump alone (no env secrets) | No — ciphertext + owner HMAC only |
-| xsnap server compromise (DB + `RINNEGAN_ISSUER_KEY`) | Yes — the key
-  derives wrap keys. This is the accepted v1 trade-off for server-side
-  translation. |
+- ciphertext paste → rinnegan `user:hash`
+- github paste → `github_username:password` (single combined field)
 
-## v2 upgrade path (not implemented)
+```
+[ Decrypting .... | Tetraquantum unlocking .... |
+  Aurelion Sol consulting .... | Maori AI webster'ng .... ]
+```
 
-Salt the hash with per-user randomness so wrap keys stop being derivable
-from the issuer key: issuer stores `verifier = HMAC(K_v, user‖salt)`,
-rinnegan becomes `user:hash = HMAC(K_i, user‖salt):salt`. Requires the
-issuer to publish verifiers (shared table or signed token). Decrypt then
-needs the user to present the rinnegan (as today) AND the server to be
-unable to reconstruct it (new). Zero-knowledge mode (client-side AES before
-upload, corpus in the CLI) remains the end-state if the operator later
-wants the server fully blind.
+Each step ~650 ms while the key check runs. Match → verbatim original in
+the dialog; github mode ALSO opens the uploader's raw repo
+(`repo_url`/`raw_url` are disclosed only inside the verified response).
+Mismatch/error → redirect to https://ufo-fsd.kimi.pro/.
+
+## v2 upgrade path (form 1)
+
+Salt the hash with per-user randomness (`user:hash = HMAC(K_i, user‖salt)`
++ published verifier) so wrap keys stop being derivable from the issuer
+key. Form 2 already achieves this structurally: the secret never leaves
+GitHub's auth boundary.

@@ -19,6 +19,7 @@
 const fs = require('fs');
 const { request } = require('./transport.js');
 const { slice } = require('./transcript.js');
+const { renderHaka } = require('./translate.js');
 
 const HELP = `xsnap — anonymous session-transcript paste (xsnap.app)
 
@@ -79,8 +80,10 @@ async function upload(args, api, rinnegan) {
     die(err.message);
   }
   if (!text.trim()) die('nothing to upload after slicing');
+  // Both hops run locally (ANY→suomi→mi); the server only publishes.
+  const mi = renderHaka(text);
   const res = await request('POST', `${api}/api/upload`,
-    { rinnegan, transcript: text, mode },
+    { rinnegan, transcript: text, mi, mode },
     { ca: args.ca, quic: args.quic });
   if (res.status === 401) die(res.json.error || 'invalid rinnegan', 3);
   if (res.status !== 201) {

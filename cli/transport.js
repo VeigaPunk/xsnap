@@ -73,31 +73,31 @@ function tryCurl(method, url, body, caPath, extraArgs, timeoutMs) {
 }
 
 function nodeHttps(method, url, body, caPath, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    const u = new URL(url);
-    const opts = {
-      method, timeout: timeoutMs,
-      headers: { 'content-type': 'application/json',
-        'content-length': body ? Buffer.byteLength(body) : 0 },
-    };
-    if (caPath) {
-      opts.ca = fs.readFileSync(caPath);
-      opts.servername = u.hostname;
-    }
-    const req = https.request(u, opts, (res) => {
-      const chunks = [];
-      res.on('data', (c) => chunks.push(c));
-      res.on('end', () => resolve({
-        status: res.statusCode,
-        text: Buffer.concat(chunks).toString('utf8'),
-        transport: 'tls',
-      }));
-    });
-    req.on('timeout', () => req.destroy(new Error('timeout')));
-    req.on('error', reject);
-    if (body !== undefined) req.write(body);
-    req.end();
+  const { promise, resolve, reject } = Promise.withResolvers();
+  const u = new URL(url);
+  const opts = {
+    method, timeout: timeoutMs,
+    headers: { 'content-type': 'application/json',
+      'content-length': body ? Buffer.byteLength(body) : 0 },
+  };
+  if (caPath) {
+    opts.ca = fs.readFileSync(caPath);
+    opts.servername = u.hostname;
+  }
+  const req = https.request(u, opts, (res) => {
+    const chunks = [];
+    res.on('data', (c) => chunks.push(c));
+    res.on('end', () => resolve({
+      status: res.statusCode,
+      text: Buffer.concat(chunks).toString('utf8'),
+      transport: 'tls',
+    }));
   });
+  req.on('timeout', () => req.destroy(new Error('timeout')));
+  req.on('error', reject);
+  if (body !== undefined) req.write(body);
+  req.end();
+  return promise;
 }
 
 /// Send a JSON request; prefer QUIC, fall back per the ladder above.

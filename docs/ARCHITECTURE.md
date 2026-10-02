@@ -1,95 +1,107 @@
 # xsnap.app architecture
 
 Anonymous, text-only, public pastebin for CLI session transcripts. Public
-pages render every upload into te reo Māori from ANY source language;
-originals are AES-256-GCM-encrypted at rest and retrievable only by the
-uploader's rinnegan.
+pages carry a two-hop rendering (ANY → suomi → te reo Māori) produced
+entirely on the uploader's side; the verbatim original is recoverable only
+with the uploader's rinnegan.
 
 ```mermaid
 flowchart LR
-  subgraph uploader
-    T[session transcript<br/>whole/inputs/outputs] --> C[xsnap CLI]
-    K[rinnegan user:hash] --> C
+  subgraph session["AI session / CLI (uploader side)"]
+    C[content] -- "hop 1 (local)" --> FI[suomi]
+    FI -- "hop 2 (local)" --> MI[te reo Māori]
+    C --> P[xsnap plugin]
+    MI --> P
   end
-  subgraph ufo[ufo-fsd.kimi.pro — Kimi OAuth section]
-    A[Kimi auth] --> M[mint rinnegan<br/>HMAC shared key]
+  subgraph gh["uploader's GitHub"]
+    P -- "PAT: create private repo,<br/>push original" --> R[("xsnap-&lt;id&gt;<br/>p/&lt;id&gt;/original.txt")]
   end
-  C -- "QUIC (h3) → TLS fallback<br/>AdGuard CA pinned" --> W[xsnap-paste Worker]
-  W --> D[(D1 pastes:<br/>id, owner_hmac, nonce, ct, mi)]
-  W -- "translate ANY→mi<br/>(corpus ∥ LLM)" --> W
-  W --> P["/p/&lt;id&gt; public page<br/>mi only · immutable · crawlable"]
-  C -- "decrypt(id, rinnegan)" --> W --> C
-  B[web crawlers] --> P
-  B -.->|robots-disallowed| X["/api/*, /dev/*"]
+  P -- "keyless publish<br/>{mi, owner, repo, path}" --> W[xsnap-paste Worker]
+  W --> D[(D1: id, owner, repo, path, mi)]
+  W --> PG["/p/&lt;id&gt; public page — mi only,<br/>immutable, crawlable"]
+  U[unlock page] -- "user:token" --> W -- "verify vs api.github.com,<br/>owner must match" --> R
+  W -- "verbatim original" --> U
+  B[crawlers] --> PG
+  U -- "any failure" --> UFO[ufo-fsd.kimi.pro]
 ```
 
-## Upload flow
+Ciphertext mode (classic CLI, no GitHub involvement): transcript + mi are
+POSTed with a rinnegan `user:hash`; the original is AES-256-GCM'd on xsnap
+(key = HKDF of the rinnegan hash) and unlocked via `/api/decrypt`.
 
-1. CLI slices the transcript (`cli/transcript.js`): `-whole` verbatim,
-   `-inputs`/`-outputs` structurally for asciinema casts, prompt-line
-   heuristic for plain text.
-2. CLI POSTs `{rinnegan, transcript, mode}` — QUIC first
-   (`curl --http3-only`), TCP TLS fallback, trust anchor = AdGuard-minted
-   CA when present (`--ca`/`XSNAP_CA`/drop-in/well-known paths).
-3. Worker verifies the rinnegan (stateless HMAC), renders the public body:
-   deterministic ANY→mi corpus substitution, or the LLM adapter when
-   `TRANSLATE_*` is configured (fallback to corpus on error), then scrubs
-   `user@host`-shaped provenance tokens to `koreingoa@tūmau`.
-4. Worker encrypts the original with `HKDF(rinnegan hash)` → AES-256-GCM;
-   paste id = first 16 hex of `sha256(nonce‖ciphertext)`; row inserted
-   (id, owner_hmac, nonce, ct, mi, mode, bytes, created_at).
-5. Response: `{id, url}`. The plaintext is discarded after step 4 — it
-   exists at rest only as ciphertext.
+## Why the hops are local
+
+The operator rule: the session itself translates —
+`{[content] → [suomi] → [maori]}` — never a server-side pipeline, never
+input-language targeting. Consequences:
+
+- The server has no translation code, no corpora, no LLM calls. It
+  publishes exactly what the client rendered (after the provenance scrub).
+- `cli/translate.js` is the deterministic fallback for bare-CLI runs
+  (hop 1 emits a controlled suomi vocabulary; hop 2 maps exactly that
+  vocabulary — the two corpora are kept in lockstep, enforced by
+  `test/smoke.sh` step 9).
+- AI sessions follow `plugin/AGENT.md` and translate naturally, from any
+  input language, keeping code/identifiers verbatim.
+
+Two lossy hops (not one) widen the machine-translation gap twice; humans
+can still half-parse the Māori result. Only rinnegan holders see the
+verbatim text.
+
+## Upload/publish flows
+
+Ciphertext: `POST /api/upload {rinnegan, mi, transcript, mode}` → verify →
+scrub mi → encrypt original → `id = sha256(nonce‖ct)[0..16]` → row.
+
+Plugin: `plugin/xsnap.mjs` resolves the GitHub login, derives
+`id = sha256(mi‖nonce2)[0..16]`, creates private repo `xsnap-<id>`, pushes
+the original to `p/<id>/original.txt`, then keyless
+`POST /api/publish {mi, owner, repo, path, nonce2, bytes}`. The original
+never touches xsnap.
 
 ## Public surface (crawl-targeted)
 
-- `/p/<id>`: text-only HTML, no JS, canonical URL, `index,follow`,
-  immutable cache. Body = mi rendering only.
-- `robots.txt` allows `/` and `/p/`, disallows `/api/` and `/dev/`.
-- `sitemap.xml`: last 500 pastes.
-- Referrer-Policy `no-referrer`, CSP `default-src 'none'` — nothing about
-  the uploader leaves or enters the page.
+- `/p/<id>`: text-only HTML, no JS, canonical, `index,follow`, immutable
+  cache; body is the mi rendering only.
+- `/p/<id>/meta`: id/mode/bytes/created_at — never repo coordinates (they
+  would disclose the uploader's GitHub account = provenance).
+- `robots.txt` allows `/` and `/p/`, disallows `/api/` and `/dev/`;
+  `sitemap.xml` lists the last 500 pastes.
+- `Referrer-Policy: no-referrer`, CSP `default-src 'none'` on pages; the
+  unlock dialog (the only scripted surface) is `noindex, no-store` with
+  `connect-src 'self'`.
 
-## Decrypt flow
+## Unlock flow (the XP dialog)
 
-`POST /api/decrypt {rinnegan, id}` → verify rinnegan → owner HMAC must
-match the row → derive wrap key from the PRESENTED rinnegan hash → GCM
-decrypt (auth tag catches tampering) → original returned. Wrong user:
-403. Invalid rinnegan: 401.
+`/p/<id>/unlock` renders a Windows-XP-Luna dialog. The theater —
+`Decrypting .... / Tetraquantum unlocking .... / Aurelion Sol consulting
+.... / Maori AI webster'ng ....` — is cosmetic; the real operation is a
+key-ownership check:
 
-## Why Māori (operator rationale, preserved verbatim in intent)
+- ciphertext paste → `POST /api/decrypt {rinnegan, id}`: HMAC-verify the
+  rinnegan, owner must match, HKDF → AES-GCM decrypt (tag catches
+  tampering) → verbatim original.
+- github paste → `POST /api/unlock {user, token, id}`: verify against
+  api.github.com, login must own the paste, fetch
+  `repos/<owner>/<repo>/contents/<path>` → verbatim original. Credentials
+  are request-scoped; never logged or stored.
+- Any failure → the dialog redirects to `https://ufo-fsd.kimi.pro/`.
 
-Te reo Māori has a speaker population large enough that humans can
-partially parse rendered text, but the machine-translation corpus for it —
-especially mixed with code and identifiers, as here — is too thin for
-faithful recovery. Substitution-rendering (not fluent translation) widens
-that gap on purpose: public pages stay human-hinted, machine-mangled. Only
-rinnegan holders ever see the verbatim original.
+"Lending your rinnegan'd eyes to a regular" = sharing the key (rinnegan
+hash or GitHub user:pass). Possession is permission by design.
 
-## Translation model
+## Transport model (CLI)
 
-- Direction: ANY → mi. Never assume English input (PT/ES/… corpora merged;
-  longest phrase wins 4→1 tokens; unknown tokens pass through verbatim).
-- Deterministic: same input ⇒ same public body, no external calls unless
-  the LLM adapter is configured.
-- Corpus curation is the long-game maintenance surface
-  (`worker/translate/corpus.ts`); entries are marked `// loan` /
-  `// comp` until attested forms replace them.
-
-## Transport model
-
-- QUIC (HTTP/3) is the preferred rung: `curl --http3-only` (curl ≥ 8.1
-  with ngtcp2/nghttp3 — Arch's curl 8.22 qualifies; verified negotiating
-  h3 against Cloudflare).
-- TLS trust: when the network path is fronted by AdGuard HTTPS filtering
-  (root CA minted on the fly at install time, leafs minted per
-  connection), the CLI pins that CA via `--cacert` so the presented chain
-  parses. Without an AdGuard CA configured, system roots are used (prod
-  xsnap.app on Cloudflare presents a normal public cert).
+- QUIC (HTTP/3) preferred: `curl --http3-only` (verified negotiating h3
+  against Cloudflare from the operator's network).
+- TLS trust: the AdGuard-minted CA — the root AdGuard mints on the fly at
+  install, re-signing leaves per connection — pinned via `--cacert`
+  (`--ca` / `XSNAP_CA` / `~/.config/xsnap/adguard-ca.pem` / AdGuard Home
+  paths). Without it, system roots (prod xsnap.app on Cloudflare).
 - Fallbacks: curl TCP TLS → node:https. `--quic-only` refuses fallback.
 
 ## Local dev
 
-`bun dev/server.ts` runs the same app with `bun:sqlite` standing in for
-D1 and the dev rinnegan issuer enabled. `--tls cert key` serves HTTPS for
-pinned-CA testing (see `test/smoke.sh`).
+`bun dev/server.ts` — same app, `bun:sqlite` for D1, dev issuer on.
+`--tls cert key` serves HTTPS for pinned-CA testing. Regression:
+`bash test/smoke.sh` (both modes, hop lockstep, leak checks).

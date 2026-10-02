@@ -63,4 +63,32 @@ node cli/xsnap.js upload -inputs  -f /tmp/xsnap-smoke.cast -r "$RIN" --api "$API
 node cli/xsnap.js upload -outputs -f /tmp/xsnap-smoke.cast -r "$RIN" --api "$API" | grep -q 'mode outputs' || fail "cast -outputs"
 node cli/xsnap.js upload -inputs  -f /tmp/xsnap-smoke.log.txt -r "$RIN" --api "$API" | grep -q 'mode inputs'  || fail "plain -inputs"
 
-echo "smoke: all green (id $ID)"
+# 9. two-hop rendering ran locally (ANY→suomi→mi), vocabulary lockstep
+HOPS=$(bun -e '
+const t = require("./cli/translate.js");
+const fi = t.renderFi("thank you");
+const haka = t.renderHaka("thank you");
+const missing = [...new Set(Object.values(t.CORPUS_FI))]
+  .filter(v => t.CORPUS_MI[v] === undefined && !v.includes(" "));
+if (fi !== "kiitos" || haka !== "ngā mihi") { console.error("hop fail", fi, haka); process.exit(1) }
+if (missing.length) { console.error("hop2 missing:", missing.join(",")); process.exit(1) }
+console.log("hops-ok");')
+[[ "$HOPS" == "hops-ok" ]] || fail "local two-hop rendering ($HOPS)"
+
+# 10. plugin publish (keyless) — deterministic id, github-mode page
+N2=$(printf '%016x' $((RANDOM * 32768 + RANDOM)))
+MI='kia ora ao — ngā mihi'
+PID=$(printf '%s' "$MI$N2" | openssl dgst -sha256 -hex | cut -d' ' -f2 | head -c 16)
+P=$(curl -s -X POST "$API/api/publish" -d "{\"mi\":\"$MI\",\"owner\":\"veigapunk\",\"repo\":\"xsnap-$PID\",\"path\":\"p/$PID/original.txt\",\"nonce2\":\"$N2\",\"bytes\":42}")
+echo "$P" | grep -q "\"id\":\"$PID\"" || fail "publish id mismatch ($P)"
+U=$(curl -s "$API/p/$PID/unlock")
+echo "$U" | grep -q 'github_username:password'  || fail "unlock combined creds field"
+echo "$U" | grep -q '#a90d0d'                   || fail "RGB 169,13,13 decrypt button"
+echo "$U" | grep -qi 'noindex'              || fail "unlock page noindex"
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/unlock" \
+  -d "{\"user\":\"veigapunk\",\"token\":\"ghp_definitelyinvalidtoken99\",\"id\":\"$PID\"}")
+[[ "$CODE" == 401 ]] || fail "github unlock with bad creds got $CODE (want 401)"
+curl -s "$API/p/$PID/meta" | grep -q '"mode":"whole"' || fail "github-mode meta"
+curl -s "$API/p/$PID/meta" | grep -q 'repo'           && fail "meta leaks repo (provenance)"
+
+echo "smoke: all green (xsnap $ID, github $PID)"
