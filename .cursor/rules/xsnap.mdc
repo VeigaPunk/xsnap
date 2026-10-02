@@ -1,0 +1,49 @@
+---
+description: xsnap.app project rules — stack, path map, invariants
+alwaysApply: true
+---
+
+# xsnap.app — project rules
+
+## What this is
+xsnap.app = anonymous, text-only, public pastebin for CLI session transcripts.
+Public pages render a Māori rendering of the upload (any source language → mi).
+The original transcript is recoverable ONLY by the uploader's rinnegan
+(`user:hash` credential minted by the ufo-fsd.kimi.pro Kimi-OAuth section).
+Provenance is never rendered on public pages.
+
+## Stack (zero npm dependencies — do not add any without operator approval)
+- `worker/` — TypeScript fetch-handler app. Runs on Cloudflare Workers (D1) in
+  prod and under Bun + `bun:sqlite` locally via `dev/server.ts`.
+- `cli/xsnap.js` — zero-dep Node/Bun single-file CLI. QUIC (HTTP/3) first via
+  `curl --http3-only` when available, TCP TLS fallback via `node:https`.
+- Transport trust anchor: AdGuard-minted CA (on-the-fly HTTPS-filtering root).
+  Resolve order: `--ca` flag → `XSNAP_CA` → `~/.config/xsnap/adguard-ca.pem` →
+  well-known AdGuard paths → system roots.
+
+## Hard invariants
+1. Translation direction is (ANY language) → Māori. Never assume English
+   input. Unknown tokens pass through unchanged (deterministic corpus).
+2. Public paste pages (`/p/<id>`): text-only, no JS, no uploader identity,
+   crawlable (canonical, robots, sitemap). Cache-Control immutable.
+3. Original text: encrypted at rest (AES-256-GCM, key = HKDF(rinnegan hash));
+   decrypt requires presenting the rinnegan and owner match.
+4. `POST /api/*` and `/dev/*` are disallowed in robots.txt (targeted crawl).
+5. No per-user data on any public response, ever. Owner is stored only as
+   `owner_hmac` and never serialized to a public route.
+
+## Commands
+- Local run: `bun dev/server.ts` (creates `dev/xsnap.db`, port 8787)
+- CLI (local): `node cli/xsnap.js upload -whole -f session.log -r <user:hash> --api http://localhost:8787`
+- CLI decrypt: `node cli/xsnap.js decrypt <id> -r <user:hash>`
+- Dev rinnegan: `curl -s -X POST localhost:8787/dev/rinnegan -d '{"user":"alice"}'`
+- Deploy: see `docs/DEPLOY.md` (dedicated worker `xsnap-paste`; NEVER deploy
+  over the shared `xsnapshot` Cloudflare Pages project)
+
+## Path map (authoritative: docs/PATHS.md)
+- Route change → `worker/index.ts`
+- Corpus/translation quality → `worker/translate/corpus.ts`
+- Rinnegan spec/verification → `worker/rinnegan.ts` + `docs/RINNEGAN.md`
+- Transcript slicing heuristics (-inputs/-outputs) → `cli/transcript.js`
+- QUIC/CA transport → `cli/transport.js`
+- D1 schema → `schema.sql`

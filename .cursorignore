@@ -1,0 +1,6 @@
+.git
+node_modules
+dev/*.db*
+.wrangler
+out
+*.db-journal

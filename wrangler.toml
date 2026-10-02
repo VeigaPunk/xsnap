@@ -1,0 +1,21 @@
+# xsnap.app worker — dedicated project. NEVER deploy the pastebin over the
+# shared `xsnapshot` Cloudflare Pages project (that serves xsnapshot.app).
+# See docs/DEPLOY.md for the full procedure incl. the xsnap.app domain move.
+name = "xsnap-paste"
+main = "worker/index.ts"
+compatibility_date = "2026-09-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "xsnap"
+# wrangler d1 create xsnap  → paste the id here
+database_id = "SET-ME-FROM-wrangler-d1-create"
+
+[vars]
+RINNEGAN_ISSUER_ID = "ufo-fsd.kimi.pro"
+ORIGIN = "https://xsnap.app"
+
+# Secrets (wrangler secret put …), never in this file:
+#   RINNEGAN_ISSUER_KEY — hex/base64 HMAC key shared with the rinnegan issuer
+#   TRANSLATE_URL / TRANSLATE_KEY / TRANSLATE_MODEL — optional LLM any→mi
+#   translator (OpenAI-compatible). Absent ⇒ deterministic corpus translator.

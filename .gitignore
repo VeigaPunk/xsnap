@@ -1,0 +1,8 @@
+.dev.vars
+*.db
+*.db-journal
+dev/xsnap.db*
+node_modules/
+out/
+.wrangler/
+.cursor/cache/
