@@ -19,7 +19,6 @@
 //   (suomi is kept for the audit trail; maori is the published body)
 
 import { createHash, randomBytes } from "node:crypto";
-
 function die(msg, code = 1) {
   process.stderr.write(`xsnap-plugin: ${msg}\n`);
   process.exit(code);
@@ -35,8 +34,8 @@ const apiFlag = (() => {
   const i = argv.indexOf("--api");
   return i >= 0 ? argv[i + 1] : null;
 })();
-const API = (apiFlag || process.env.XSNAP_API || "https://xsnap.app")
-  .replace(/\/+$/, "");
+const API = (apiFlag || process.env.XSNAPSHOT_API || process.env.XSNAP_API
+  || "https://xsnapshot.app").replace(/\/+$/, "");
 const TOKEN = process.env.GITHUB_TOKEN;
 const MAX_CHARS = 512_000;
 

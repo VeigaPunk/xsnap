@@ -75,20 +75,41 @@ if (missing.length) { console.error("hop2 missing:", missing.join(",")); process
 console.log("hops-ok");')
 [[ "$HOPS" == "hops-ok" ]] || fail "local two-hop rendering ($HOPS)"
 
-# 10. plugin publish (keyless) — deterministic id, github-mode page
+# 10. xsnap.app is rinnegan-only: github routes must NOT exist here
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/publish" -d '{}')
+[[ "$CODE" == 404 ]] || fail "xsnap.app should not have /api/publish (got $CODE)"
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/unlock" -d '{}')
+[[ "$CODE" == 404 ]] || fail "xsnap.app should not have /api/unlock (got $CODE)"
+
+# 11. xsnapshot.app site (github mode, port 8788): keyless publish,
+#     user:pass unlock dialog, bad-creds rejection
+XAPI="http://localhost:8788"
+PORT=8788 bun dev/server-xsnapshot.ts >/tmp/xsnap-smoke-x.log 2>&1 &
+XSRV=$!
+trap 'kill $SRV $XSRV 2>/dev/null || true' EXIT
+for _ in $(seq 1 50); do
+  curl -s -o /dev/null "$XAPI/p/0000000000000000/meta" && break
+  sleep 0.1
+done
 N2=$(printf '%016x' $((RANDOM * 32768 + RANDOM)))
 MI='kia ora ao — ngā mihi'
 PID=$(printf '%s' "$MI$N2" | openssl dgst -sha256 -hex | cut -d' ' -f2 | head -c 16)
-P=$(curl -s -X POST "$API/api/publish" -d "{\"mi\":\"$MI\",\"owner\":\"veigapunk\",\"repo\":\"xsnap-$PID\",\"path\":\"p/$PID/original.txt\",\"nonce2\":\"$N2\",\"bytes\":42}")
+P=$(curl -s -X POST "$XAPI/api/publish" -d "{\"mi\":\"$MI\",\"owner\":\"veigapunk\",\"repo\":\"xsnap-$PID\",\"path\":\"p/$PID/original.txt\",\"nonce2\":\"$N2\",\"bytes\":42}")
 echo "$P" | grep -q "\"id\":\"$PID\"" || fail "publish id mismatch ($P)"
-U=$(curl -s "$API/p/$PID/unlock")
+PG=$(curl -s "$XAPI/p/$PID")
+echo "$PG" | grep -q 'wetehuna'                 || fail "xsnapshot paste page red button"
+echo "$PG" | grep -q '#a90d0d'                  || fail "RGB 169,13,13 button"
+! echo "$PG" | grep -q 'veigapunk'              || fail "xsnapshot page leaks owner"
+U=$(curl -s "$XAPI/p/$PID/unlock")
 echo "$U" | grep -q 'github_username:password'  || fail "unlock combined creds field"
-echo "$U" | grep -q '#a90d0d'                   || fail "RGB 169,13,13 decrypt button"
-echo "$U" | grep -qi 'noindex'              || fail "unlock page noindex"
-CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/unlock" \
+echo "$U" | grep -q 'a90d0d'                    || fail "RGB 169,13,13 decrypt button"
+echo "$U" | grep -qi 'noindex'                  || fail "unlock page noindex"
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$XAPI/api/unlock" \
   -d "{\"user\":\"veigapunk\",\"token\":\"ghp_definitelyinvalidtoken99\",\"id\":\"$PID\"}")
-[[ "$CODE" == 401 ]] || fail "github unlock with bad creds got $CODE (want 401)"
-curl -s "$API/p/$PID/meta" | grep -q '"mode":"whole"' || fail "github-mode meta"
-curl -s "$API/p/$PID/meta" | grep -q 'repo'           && fail "meta leaks repo (provenance)"
+[[ "$CODE" == 401 ]] || fail "github unlock bad creds got $CODE (want 401)"
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$XAPI/api/decrypt" -d '{}')
+[[ "$CODE" == 404 ]] || fail "xsnapshot site should not have /api/decrypt (got $CODE)"
+curl -s "$XAPI/p/$PID/meta" | grep -q '"mode":"whole"' || fail "github-mode meta"
+curl -s "$XAPI/p/$PID/meta" | grep -q 'repo'           && fail "meta leaks repo (provenance)"
 
-echo "smoke: all green (xsnap $ID, github $PID)"
+echo "smoke: all green (xsnap $ID, xsnapshot $PID)"

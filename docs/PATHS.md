@@ -1,111 +1,103 @@
-# xsnap.app — paths of reference
+# xsnap.app + xsnapshot.app — paths of reference
 
 The authoritative map of "I want to change X → edit Y". If a route, flag,
 file or env var isn't listed here, it doesn't exist.
 
-## Wire (repo → world)
+## Two websites, two unlock models
+
+| | **xsnap.app** (Kimi-OAuth site) | **xsnapshot.app** (GitHub site) |
+|---|---|---|
+| Who it's for | rinnegan'd users (Kimi OAuth on ufo-fsd.kimi.pro) | anyone with a GitHub account |
+| Upload | CLI, rinnegan `user:hash` required | plugin (keyless publish) |
+| Public body | `mi` rendered locally by the CLI | `maori` rendered locally by the session |
+| Original | AES-256-GCM on xsnap, key = HKDF(rinnegan hash) | uploader's PRIVATE GitHub repo `xsnap-<id>`, file `p/<id>/original.txt` |
+| Unlock key | proprietary rinnegan `user:hash` | simple `github_username:password` (PAT) |
+| Unlock payoff | verbatim original in the XP dialog | the user's raw repo OPENS (no original text on the site) |
+| Paste id | `sha256(nonce‖ct)[0..16]` | `sha256(mi‖nonce2)[0..16]` (computed client-side first) |
+| Code | `worker/` | `xsnapshot-site/` |
+| Dev | `bun dev/server.ts` → :8787, db `dev/xsnap.db` | `bun dev/server-xsnapshot.ts` → :8788, db `dev/xsnapshot.db` |
+
+Shared: `schema.sql` (one paste table for both D1 databases), `cli/` (the
+xsnap CLI + local two-hop renderer), `plugin/` (ships to xsnapshot.app),
+the XP decryptor look and the `[169,13,13]` wetehuna button (template
+fixes must be applied to BOTH `worker/html.ts` and `xsnapshot-site/html.ts`).
+
+## Wire
 
 | Thing | Value |
 |---|---|
-| Origin | `https://github.com/VeigaPunk/xsnap.git` (branch `main`) |
-| Domain | `xsnap.app` (Cloudflare zone `4a0a5532…`, registrar name.com) |
-| Deploy target | Dedicated Worker `xsnap-paste` + D1 `xsnap` — **never** the shared `xsnapshot` Pages project (see `docs/DEPLOY.md`) |
-| Cursor | `.cursor/rules/xsnap.mdc` (always-on project rules), `.cursorignore` |
-| Local run | `bun dev/server.ts` → `http://localhost:8787`, SQLite `dev/xsnap.db` |
-| Companion | `xsnapshot.app` (flagship), plugin source lives here |
-
-## Two publish modes
-
-| | Ciphertext (CLI) | Plugin (AI session) |
-|---|---|---|
-| Upload auth | rinnegan `user:hash` (HMAC issuer) | **keyless** |
-| Public body | `mi` rendered locally by the CLI (`cli/translate.js`) | `maori` rendered by the session itself (two hops) |
-| Original | AES-256-GCM on xsnap, key = HKDF(rinnegan) | uploader's PRIVATE GitHub repo `xsnap-<id>`, file `p/<id>/original.txt` |
-| Unlock | `POST /api/decrypt` with the rinnegan | `POST /api/unlock` with GitHub `user:token` — "the rinnegan is merely his github user:pass" |
-| Paste id | `sha256(nonce‖ct)[0..16]` | `sha256(mi‖nonce2)[0..16]` (computed client-side first) |
+| Origin repo | `https://github.com/VeigaPunk/xsnap.git` (main) |
+| xsnap.app | Worker `xsnap-paste` + D1 `xsnap` (root `wrangler.toml`) |
+| xsnapshot.app | Worker `xsnapshot-paste` + D1 `xsnapshot-pastes` (`xsnapshot-site/wrangler.toml`), routes `xsnapshot.app/p/*`, `/api/publish`, `/api/unlock` — the existing X-snapshot Pages site stays untouched |
+| Kimi OAuth issuer | ufo-fsd.kimi.pro rinnegan'd section (mints user:hash; shares `RINNEGAN_ISSUER_KEY`) |
+| Cursor | `.cursor/rules/xsnap.mdc`, `.cursorignore` |
 
 ## Files
 
 | Path | Owns |
 |---|---|
-| `worker/index.ts` | All routes, upload/publish/decrypt/unlock flows, scrub, headers |
-| `worker/rinnegan.ts` | user:hash parse/mint/verify, owner HMAC, wrap-key HKDF (ciphertext mode) |
-| `worker/crypto.ts` | WebCrypto: SHA-256, HMAC, HKDF, AES-256-GCM, base64 |
+| `worker/index.ts` | xsnap.app routes: upload/decrypt/paste/raw/meta/unlock/dev-mint |
+| `worker/rinnegan.ts` | user:hash parse/mint/verify, owner HMAC, wrap-key HKDF |
+| `worker/crypto.ts` | SHA-256, HMAC, HKDF, AES-256-GCM, base64 |
 | `worker/d1.ts` | DB surface; `wrapD1()` normalizes Cloudflare D1 |
-| `worker/html.ts` | Home/paste/404 templates + the XP-styled unlock dialog |
-| `cli/xsnap.js` | Command surface: upload / decrypt / rinnegan |
-| `cli/translate.js` | LOCAL two-hop renderer (ANY→suomi→mi) + both corpora |
+| `worker/html.ts` | xsnap.app pages + XP rinnegan decryptor |
+| `xsnapshot-site/index.ts` | xsnapshot.app routes: publish/unlock/paste/raw/meta |
+| `xsnapshot-site/html.ts` | xsnapshot.app pages + XP github user:pass decryptor |
+| `cli/xsnap.js` | CLI commands (targets xsnap.app) |
+| `cli/translate.js` | LOCAL two-hop renderer (ANY→suomi→mi) + corpora |
 | `cli/transport.js` | QUIC→TCP TLS ladder, AdGuard-CA resolution |
-| `cli/transcript.js` | `-whole/-inputs/-outputs` slicing (cast + heuristics) |
-| `plugin/xsnap.mjs` | Keyless session plugin: private-repo push + publish |
-| `plugin/AGENT.md` | The guidance shipped with the rinnegan'd ufo-fsd section |
-| `dev/server.ts` | Bun dev runner (bun:sqlite → DBLike, dev issuer on) |
-| `schema.sql` | D1/SQLite paste table (dual origin columns) |
-| `wrangler.toml` | Worker + D1 binding + public vars |
-| `docs/RINNEGAN.md` | Credential spec (user:hash + github user:pass), federation |
-| `docs/DEPLOY.md` | Cloudflare procedure + domain cutover warning |
-| `test/smoke.sh` | Full local regression (both modes) |
+| `cli/transcript.js` | `-whole/-inputs/-outputs` slicing |
+| `plugin/xsnap.mjs` | keyless plugin: private-repo push + publish (xsnapshot.app) |
+| `plugin/AGENT.md` | agent guidance shipped with the ufo-fsd section |
+| `dev/server.ts`, `dev/server-xsnapshot.ts` | Bun dev runners |
+| `schema.sql` | shared paste table (both D1 databases) |
+| `docs/RINNEGAN.md` | both credential forms |
+| `docs/DEPLOY.md` | both workers + domain notes |
+| `test/smoke.sh` | full regression across BOTH sites |
 
-## HTTP routes (worker/index.ts)
+## Routes
 
+**xsnap.app (`worker/index.ts`)**
 | Route | Method → result |
 |---|---|
-| `/` | GET → home page |
-| `/robots.txt` | GET → allow all, disallow `/api/`, `/dev/` |
-| `/sitemap.xml` | GET → last 500 pastes |
-| `/p/:id` | GET → public paste page (mi only, immutable) |
-| `/p/:id/raw` | GET → text/plain mi body |
-| `/p/:id/meta` | GET → `{id, mode, bytes, created_at}` (no repo coords — provenance) |
-| `/p/:id/unlock` | GET → XP-styled unlock dialog (noindex, no-store) |
+| `/` , `/robots.txt`, `/sitemap.xml` | GET → home / crawl rules / last 500 pastes |
+| `/p/:id` · `/p/:id/raw` · `/p/:id/meta` | GET → page (mi only, immutable) / text body / JSON meta |
+| `/p/:id/unlock` | GET → XP rinnegan decryptor (noindex) |
 | `/api/upload` | POST `{rinnegan, mi, transcript, mode?}` → `201 {id,url,bytes}` |
+| `/api/decrypt` | POST `{rinnegan, id}` → `200 {id,transcript}` |
+| `/dev/rinnegan` | POST `{user}` → dev-minted rinnegan (DEV only) |
+
+**xsnapshot.app (`xsnapshot-site/index.ts`, route-limited)**
+| Route | Method → result |
+|---|---|
+| `/p/:id` · `/p/:id/raw` · `/p/:id/meta` | GET → page (mi only, immutable) / text body / JSON meta |
+| `/p/:id/unlock` | GET → XP github user:pass decryptor (noindex) |
 | `/api/publish` | POST `{mi, owner, repo, path, nonce2, bytes?}` → `201 {id,url}` (keyless) |
-| `/api/decrypt` | POST `{rinnegan, id}` → `200 {id,transcript}` (ciphertext mode) |
-| `/api/unlock` | POST `{user, token, id}` → `200 {id,transcript}` (github mode; server verifies against api.github.com, owner must match; creds never stored) |
-| `/dev/rinnegan` | POST `{user}` → dev-minted rinnegan (DEV env only) |
+| `/api/unlock` | POST `{user, token, id}` → `200 {id,repo_url,raw_url}` — URLs only, original never proxied |
 
-## CLI flags (cli/xsnap.js)
+## CLI flags / plugin env / server env
 
-| Flag / env | Meaning |
+| Surface | Keys |
 |---|---|
-| `-whole` / `-inputs` / `-outputs` | Slicing mode (one required) |
-| `-f, --file FILE` or stdin | Transcript source |
-| `-r, --rinnegan user:hash` / `XSNAP_RINNEGAN` | Credential (ciphertext mode) |
-| `--api URL` / `XSNAP_API` | Endpoint (default `https://xsnap.app`) |
-| `--ca PATH` / `XSNAP_CA` / auto-discovery | AdGuard-minted CA pem |
-| `--quic-only` / `--no-quic` | Transport pinning |
-| `decrypt <id>` | Prints original to stdout |
-
-## Plugin env (plugin/xsnap.mjs)
-
-| Var | Meaning |
-|---|---|
-| `GITHUB_TOKEN` | PAT: repo create + contents write (classic `repo` scope, or fine-grained Administration+Contents RW) |
-| `XSNAP_API` / `--api` | xsnap endpoint |
-| stdin JSON | `{content, suomi, maori}` — the session translates, the script plumbs |
-
-## Server env
-
-| Var | Where | Meaning |
-|---|---|---|
-| `RINNEGAN_ISSUER_KEY` | secret | HMAC key shared with the issuer (ciphertext mode) |
-| `RINNEGAN_ISSUER_ID` | var | Issuer label shown on pages (`ufo-fsd.kimi.pro`) |
-| `ORIGIN` | var | Canonical origin for URLs/sitemap |
-| `DEV` | dev only | Enables `POST /dev/rinnegan` |
+| `cli/xsnap.js` | `-whole/-inputs/-outputs`, `-f FILE`, `-r user:hash`/`XSNAP_RINNEGAN`, `--api`/`XSNAP_API` (default xsnap.app), `--ca`/`XSNAP_CA`, `--quic-only/--no-quic`, `decrypt <id>` |
+| `plugin/xsnap.mjs` | `GITHUB_TOKEN` (PAT: repo create + contents write), `XSNAPSHOT_API`/`--api` (default xsnapshot.app), stdin JSON `{content, suomi, maori}` |
+| xsnap worker env | `RINNEGAN_ISSUER_KEY` (secret), `RINNEGAN_ISSUER_ID`, `ORIGIN`, `DEV` (dev only) |
+| xsnapshot worker env | `ORIGIN` |
 
 ## Behaviors pinned by design
 
 1. Translation is ALWAYS client-side, two hops: ANY → suomi → mi
-   (`plugin/AGENT.md` for AI sessions; `cli/translate.js` fallback corpus).
-   The server never translates.
+   (`plugin/AGENT.md` for sessions; `cli/translate.js` fallback corpus).
+   Neither server translates. Unknown tokens pass through.
 2. Public pages never contain original text, uploader identity, or
-   `user@host`-shaped tokens (scrubbed to `koreingoa@tūmau`). Repo
-   coordinates of plugin pastes are never serialized to public routes.
-3. Unlock (either mode) requires a key that proves ownership: rinnegan
-   hash match, or GitHub creds whose login owns the paste; the unlock
-   response discloses `repo_url`/`raw_url` only after verification.
-4. Paste pages carry the `[169,13,13]` **wetehuna** button that opens the
-   decryptor dialog; github mode takes one combined `github_username:password`
-   field and opens the raw repo on success; any failure redirects to
-   ufo-fsd.kimi.pro.
-5. `/p/*` paste pages: canonical, immutable-cached, no JS; `/p/*/unlock`
-   is the only scripted surface (noindex).
+   `user@host` tokens (scrubbed to `koreingoa@tūmau`); GitHub repo
+   coordinates are never serialized to public routes — only inside the
+   verified `/api/unlock` response.
+3. xsnap.app unlocks with the rinnegan (verbatim in the dialog);
+   xsnapshot.app unlocks with `github_username:password` and OPENS the
+   user's raw repo — no original text is ever rendered on xsnapshot.app.
+4. Paste pages carry the `[169,13,13]` wetehuna button that opens the
+   decryptor; the four-step theater runs during the real key check; any
+   failure redirects to ufo-fsd.kimi.pro.
+5. `/p/*` pages: canonical, immutable-cached, no JS; `/p/*/unlock` is the
+   only scripted surface per site (noindex).

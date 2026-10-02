@@ -1,61 +1,67 @@
 ---
-description: xsnap.app project rules — stack, path map, invariants
+description: xsnap project rules — two sites, stack, path map, invariants
 alwaysApply: true
 ---
 
-# xsnap.app — project rules
+# xsnap — project rules (xsnap.app + xsnapshot.app transcript sites)
 
 ## What this is
-xsnap.app = anonymous, text-only, public pastebin for CLI session
+Two anonymous, text-only, public pastebin surfaces for CLI session
 transcripts. Public pages carry a two-hop rendering (ANY → suomi → te reo
-Māori) produced entirely CLIENT-side. The verbatim original is recoverable
-only with the uploader's rinnegan. Provenance is never rendered publicly.
+Māori) produced entirely CLIENT-side. Originals open only to key holders;
+provenance is never rendered publicly.
 
-## Two publish modes
-- Ciphertext (CLI): rinnegan `user:hash` at upload; original AES-256-GCM'd
-  on xsnap; unlock via `/api/decrypt`.
-- Plugin (AI sessions, keyless): session translates locally (both hops),
-  plugin pushes the original to the uploader's PRIVATE GitHub repo and
-  publishes only the Māori body. The rinnegan for unlock is the GitHub
-  `user:pass` (PAT). Guidance: `plugin/AGENT.md`.
+## Two websites, two unlock models — do not mix them
+- **xsnap.app** (`worker/`): Kimi-OAuth rinnegan'd users. Upload + unlock
+  both use the proprietary `user:hash` (minted on ufo-fsd.kimi.pro).
+  Unlock payoff: verbatim original in the XP dialog. NO GitHub here.
+- **xsnapshot.app** (`xsnapshot-site/`, route-limited worker beside the
+  existing X-snapshot Pages site): keyless publish via the plugin; the
+  user hosts the original in their own PRIVATE GitHub repo; unlock key is
+  the simple `github_username:password`; payoff: the raw repo OPENS — no
+  original text is ever rendered on the site.
 
 ## Stack (zero npm dependencies — do not add any without operator approval)
-- `worker/` — TypeScript fetch-handler app. Cloudflare Workers + D1 in
-  prod; Bun + `bun:sqlite` locally via `dev/server.ts`.
-- `cli/` — zero-dep Node/Bun CLI + local two-hop renderer
-  (`cli/translate.js`) + QUIC-first transport with AdGuard-CA pinning.
-- `plugin/` — keyless session plugin shipped with the rinnegan'd
-  ufo-fsd.kimi.pro section.
+- Workers: TypeScript fetch handlers. Cloudflare Workers + D1 in prod;
+  Bun + `bun:sqlite` locally (`dev/server.ts` :8787,
+  `dev/server-xsnapshot.ts` :8788).
+- `cli/` — zero-dep Node/Bun CLI (targets xsnap.app) + local two-hop
+  renderer (`cli/translate.js`) + QUIC-first transport (AdGuard-CA
+  pinning).
+- `plugin/` — keyless session plugin (targets xsnapshot.app), shipped
+  with the rinnegan'd ufo-fsd.kimi.pro section.
 
 ## Hard invariants
 1. Translation is ALWAYS local, two hops: ANY language → suomi → Māori.
-   NEVER translate server-side; NEVER target input languages with
-   server corpora. Unknown tokens pass through unchanged.
-2. Public paste pages: text-only, no JS, no uploader identity, no
-   `user@host` tokens (scrubbed to `koreingoa@tūmau`), no GitHub repo
-   coordinates, canonical + robots + sitemap, immutable cache.
-3. Unlock requires an ownership-proving key (rinnegan hash match, or
-   GitHub creds whose login owns the paste). Credentials are
-   request-scoped — never logged, never stored.
-4. `/p/*/unlock` is the only scripted page (noindex); all other pages CSP
-   `default-src 'none'`.
-5. No per-user data on any public response, ever.
+   NEVER translate server-side; NEVER target input languages with server
+   corpora. Unknown tokens pass through unchanged.
+2. Public pages: text-only, no JS, no uploader identity, no `user@host`
+   tokens (scrubbed to `koreingoa@tūmau`), no GitHub repo coordinates,
+   canonical + immutable cache.
+3. Repo coordinates are disclosed ONLY inside the verified
+   `/api/unlock` response (after GitHub auth + ownership match).
+4. xsnapshot.app never stores, proxies, or renders the original.
+5. `/p/*/unlock` is the only scripted page per site (noindex); the
+   `[169,13,13]` wetehuna button on paste pages opens it; the four-step
+   theater runs during the real key check; failures redirect to
+   ufo-fsd.kimi.pro.
+6. No per-user data on any public response, ever.
 
 ## Commands
-- Local run: `bun dev/server.ts` (port 8787, SQLite `dev/xsnap.db`)
-- Regression: `bash test/smoke.sh` (both modes, hop lockstep, leaks)
+- Local: `bun dev/server.ts` (:8787) · `bun dev/server-xsnapshot.ts` (:8788)
+- Regression (both sites): `bash test/smoke.sh`
 - CLI: `node cli/xsnap.js upload -whole -f s.log -r <user:hash> --api http://localhost:8787`
 - Dev rinnegan: `curl -s -X POST localhost:8787/dev/rinnegan -d '{"user":"alice"}'`
-- Deploy: see `docs/DEPLOY.md` (dedicated worker `xsnap-paste`; NEVER the
-  shared `xsnapshot` Cloudflare Pages project)
+- Deploy: `docs/DEPLOY.md` (workers `xsnap-paste` and `xsnapshot-paste`;
+  NEVER the shared `xsnapshot` Cloudflare Pages project)
 
 ## Path map (authoritative: docs/PATHS.md)
-- Route change → `worker/index.ts`
-- Corpora / local hops → `cli/translate.js` (hop-1 values must have hop-2
-  entries — smoke enforces)
-- Rinnegan spec/verify → `worker/rinnegan.ts` + `docs/RINNEGAN.md`
-- Unlock dialog (XP) → `worker/html.ts` `unlockPage()`
+- xsnap.app routes → `worker/index.ts`; pages → `worker/html.ts`
+- xsnapshot.app routes → `xsnapshot-site/index.ts`; pages →
+  `xsnapshot-site/html.ts` (template fixes go to BOTH html.ts files)
+- Corpora / local hops → `cli/translate.js` (hop-1 values must have
+  hop-2 entries — smoke enforces)
+- Rinnegan spec → `worker/rinnegan.ts` + `docs/RINNEGAN.md`
 - Plugin plumbing → `plugin/xsnap.mjs`; agent guidance → `plugin/AGENT.md`
-- Transcript slicing → `cli/transcript.js`
-- QUIC/CA transport → `cli/transport.js`
-- D1 schema → `schema.sql`
+- Transcript slicing → `cli/transcript.js`; QUIC/CA → `cli/transport.js`
+- Shared D1 schema → `schema.sql`

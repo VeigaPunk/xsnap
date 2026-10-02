@@ -1,5 +1,6 @@
-// worker/html.ts — lean text-first pages. No JS, inline CSS, crawl-friendly.
-// Public pages MUST NOT contain uploader identity or original text.
+// xsnapshot-site/html.ts — public pages for the GitHub-mode transcript
+// surface on xsnapshot.app. Deliberately mirrors worker/html.ts (the
+// xsnap.app cousin); template fixes must be applied to both.
 
 export function escapeHtml(s: string): string {
   return s
@@ -29,66 +30,43 @@ ${body}
 </html>`;
 }
 
-export function homePage(origin: string, issuer: string): string {
-  return layout(
-    "xsnap — tuhinga nohoanga (session-transcript paste)",
-    "Anonymous, text-only, public paste for CLI session transcripts. Public body rendered in te reo Māori; originals recoverable only with the uploader's rinnegan.",
-    `${origin}/`,
-    `<h1>xsnap</h1>
-<p>Punakitanga tuhinga nohoanga — anonymous, text-only, public host for CLI
-session transcripts. Every paste's public page is rendered
-<em>whakamāori</em> (into te reo Māori) via suomi, both hops done locally
-by the uploader's session — the server never translates. The
-<em>taketake</em> (original) is encrypted at rest and recoverable only with
-the uploader's <strong>rinnegan</strong> — a proprietary user:hash minted
-through Kimi OAuth on ${escapeHtml(issuer)}.</p>
-<h2>CLI</h2>
-<pre>xsnap upload -whole    -f session.log  -r &lt;user:hash&gt;
-xsnap upload -inputs   -f session.cast -r &lt;user:hash&gt;
-xsnap upload -outputs  -f session.log  -r &lt;user:hash&gt;
-xsnap decrypt &lt;id&gt; -r &lt;user:hash&gt;</pre>
-<p class="muted">Transport: QUIC (HTTP/3) first, TCP TLS fallback; trust
-anchor: the AdGuard-minted CA when configured (<code>--ca</code>).
-GitHub-hosted transcripts (user:pass unlock) live on the cousin site
-<a href="https://xsnapshot.app/">xsnapshot.app</a>.</p>
-<h2>Kōnae (files)</h2>
-<p><a href="/sitemap.xml">sitemap.xml</a> · <a href="/robots.txt">robots.txt</a></p>
-<footer><small>xsnap.app — koreingoa (anonymous), tūmatanui (public),
-muna (originals are private to their rinnegan holder).</small></footer>`,
-  );
-}
-
 export function pastePage(
-  id: string, mi: string, bytes: number, createdAt: number, mode: string,
-  origin: string,
+  id: string, mi: string, bytes: number, createdAt: number, origin: string,
 ): string {
   const when = new Date(createdAt * 1000).toISOString().slice(0, 19) + "Z";
-  const desc = `Anonymous session transcript ${id} — te reo Māori rendering (${mode}).`;
+  const desc = `Anonymous session transcript ${id} — te reo Māori rendering.`;
   return layout(
-    `xsnap/${id}`,
+    `xsnapshot/${id}`,
     desc,
     `${origin}/p/${id}`,
-    `<h1><a href="/">xsnap</a>/${id}</h1>
-<p class="muted">${when} · ${bytes} bytes · mode: ${escapeHtml(mode)} ·
-whakamāori (via suomi)</p>
+    `<h1>xsnapshot/${id}</h1>
+<p class="muted">${when} · ${bytes} bytes · whakamāori (via suomi)</p>
 <pre>${escapeHtml(mi)}</pre>
 <p><a class="wetehuna" href="/p/${id}/unlock">wetehuna — open the decryptor</a></p>
 <footer><small>Koreingoa: no uploader identity is stored on this page. The
-taketake (original) is haumaru-encrypted; only its rinnegan holder can
-retrieve it.</small></footer>`,
+taketake (original) lives in the uploader's own private GitHub repo; it
+opens only for the holder of that user:pass.</small></footer>`,
   );
 }
 
+export function notFoundPage(origin: string): string {
+  return layout("xsnapshot — korekore (not found)", "No such paste.",
+    `${origin}/404`,
+    `<h1>korekore</h1><p>No such paste.</p>`);
+}
+
+/// XP-Luna decryptor: one combined field, github_username:password. The
+/// theater is cosmetic; the real check verifies the credentials against
+/// GitHub and that the login owns this paste. On match the user's raw repo
+/// OPENS (no original text is ever rendered on this site).
 export function unlockPage(id: string): string {
-  const fields = `<label for="key">SSoT hash key (rinnegan user:hash) — minted via Kimi OAuth on ufo-fsd.kimi.pro</label>
-<input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="user:…">`;
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>xsnap/${id} — wetehuna</title>
+<title>xsnapshot/${id} — wetehuna</title>
 <style>
 :root{color-scheme:light}
 body{margin:0;min-height:100vh;display:grid;place-items:center;background:#3a6ea5;font:11px Tahoma,'MS Sans Serif',Geneva,sans-serif;color:#000}
@@ -100,19 +78,21 @@ body{margin:0;min-height:100vh;display:grid;place-items:center;background:#3a6ea
 .ask label{display:block;margin:6px 0 4px;font-weight:700}
 .ask input{width:100%;box-sizing:border-box;border:1px solid #7f9db9;padding:3px 4px;font:11px Tahoma;background:#fff}
 .btn{margin-top:12px;padding:3px 16px;font:11px Tahoma;border:1px solid #003c74;border-radius:3px;background:linear-gradient(180deg,#fff,#ecebe5 86%,#d8d0c4)}
+.btn.go{background:#a90d0d;color:#fff;border-color:#6d0808;font-weight:700}
 .status{margin:10px 0 6px;font-weight:700;min-height:14px}
 .bar{height:16px;border:1px solid #7f9db9;background:#fff;padding:1px;overflow:hidden}
 .bar i{display:block;height:100%;width:34%;background:repeating-linear-gradient(90deg,#4be04b 0 8px,#fff 8px 10px);animation:slide 1.1s linear infinite}
 @keyframes slide{from{transform:translateX(-110%)}to{transform:translateX(330%)}}
 pre.out{white-space:pre-wrap;word-break:break-word;background:#fff;border:1px solid #7f9db9;padding:8px;max-height:50vh;overflow:auto;margin:10px 0}
-.err{color:#a00}.btn.go{background:#a90d0d;color:#fff;border-color:#6d0808;font-weight:700}
+.err{color:#a00}
 </style>
 </head>
 <body>
 <div class="dlg">
-  <div class="tb"><span>xsnap decrypt — ${escapeHtml(id)}</span><span class="x">×</span></div>
+  <div class="tb"><span>xsnapshot decrypt — ${escapeHtml(id)}</span><span class="x">×</span></div>
   <div class="panel ask on" id="ask">
-    ${fields}
+    <label for="creds">github_username:password — the unlock key</label>
+    <input id="creds" type="password" autocomplete="off" spellcheck="false" placeholder="github_username:password">
     <button class="btn go" id="go">Decrypt</button>
   </div>
   <div class="panel" id="run">
@@ -120,8 +100,8 @@ pre.out{white-space:pre-wrap;word-break:break-word;background:#fff;border:1px so
     <div class="bar"><i></i></div>
   </div>
   <div class="panel" id="done">
-    <div class="status">Verbatim original — unlocked via rinnegan'd SSoT key.</div>
-    <pre class="out" id="out"></pre>
+    <div class="status">Verified — opening your raw repo.</div>
+    <p id="links"></p>
   </div>
 </div>
 <script>
@@ -129,41 +109,34 @@ const STEPS=["Decrypting ....","Tetraquantum unlocking ....","Aurelion Sol consu
 const id=${JSON.stringify(id)};
 function $(s){return document.querySelector(s)}
 function delay(ms){const{promise,resolve}=Promise.withResolvers();setTimeout(resolve,ms);return promise}
-function payload(){
-  const key=$('#key').value.trim();
-  return key?{rinnegan:key,id}:null;
-}
 $('#go').addEventListener('click',async()=>{
-  const body=payload();
-  if(!body)return;
+  const creds=$('#creds').value.trim();
+  const at=creds.indexOf(':');
+  if(at<1)return;
   $('#ask').classList.remove('on');
   $('#run').classList.add('on');
-  // The theater below is cosmetic: the only real operation is the rinnegan
-  // check — the presented key must verify AND own this paste.
+  // The theater below is cosmetic: the real operation verifies the
+  // github_username:password and that the login owns this paste.
   const tick=(async()=>{for(const s of STEPS){$('#status').textContent=s;await delay(650)}})();
   let res;
   try{
-    res=await fetch('/api/decrypt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    res=await fetch('/api/unlock',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({user:creds.slice(0,at),token:creds.slice(at+1),id})});
   }catch{res={ok:false}}
   await tick;
   if(res.ok){
     const j=await res.json();
     $('#run').classList.remove('on');
-    $('#out').textContent=j.transcript;
+    $('#links').innerHTML='raw repo: <a href="'+j.repo_url+'" target="_blank" rel="noopener">'+j.repo_url+'</a>';
     $('#done').classList.add('on');
+    window.open(j.repo_url,'_blank','noopener');
   }else{
-    $('#status').textContent='Key does not match this paste\\u2019s rinnegan. Redirecting\\u2026';
+    $('#status').textContent='Key does not match. Redirecting\\u2026';
     $('#status').classList.add('err');
     setTimeout(()=>location.replace('https://ufo-fsd.kimi.pro/'),900);
   }
 });
-$('#key').addEventListener('keydown',e=>{if(e.key==='Enter')$('#go').click()});
+$('#creds').addEventListener('keydown',e=>{if(e.key==='Enter')$('#go').click()});
 </script>
 </body>
 </html>`;
-}
-
-export function notFoundPage(origin: string): string {
-  return layout("xsnap — korekore (not found)", "No such paste.", `${origin}/404`,
-    `<h1>korekore</h1><p>No such paste. <a href="/">→ xsnap</a></p>`);
 }

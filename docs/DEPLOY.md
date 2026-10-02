@@ -1,4 +1,4 @@
-# Deploy — xsnap.app
+# Deploy — xsnap.app + xsnapshot.app workers
 
 ## ⚠ Before anything: do not touch the shared Pages project
 
@@ -60,3 +60,29 @@ curl -s https://xsnap.app/sitemap.xml | head
 Workers versioning (`wrangler rollback`) for code; domain back onto the
 Pages project for the landing; D1 data is additive-only (no migrations in
 v1 beyond `schema.sql`).
+
+## xsnapshot-paste (GitHub-mode transcript worker, xsnapshot.app)
+
+Route-limited coexistence with the existing X-snapshot Pages site:
+
+```bash
+cd xsnapshot-site
+wrangler d1 create xsnapshot-pastes   # paste database_id into xsnapshot-site/wrangler.toml
+wrangler d1 execute xsnapshot-pastes --remote --file ../schema.sql
+wrangler deploy
+```
+
+Then add zone routes (dashboard → the worker → Triggers, or the API):
+`xsnapshot.app/p/*`, `xsnapshot.app/api/publish`,
+`xsnapshot.app/api/unlock`. No secrets needed (keyless publish; unlock
+verifies against api.github.com with the user's own creds). If a
+route/custom-domain conflict with the Pages project ever surfaces, move
+the worker to a dedicated hostname (e.g. `t.xsnapshot.app`) and set
+`ORIGIN` in `xsnapshot-site/wrangler.toml` accordingly.
+
+Verify:
+
+```bash
+curl -s https://xsnapshot.app/p/0000000000000000/meta   # {"error":"not found"}
+cat payload.json | GITHUB_TOKEN=… node plugin/xsnap.mjs # publishes to xsnapshot.app
+```

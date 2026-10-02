@@ -1,10 +1,17 @@
 # Rinnegan — the keys that open originals
 
 "Rinnegan" is the umbrella name for the credential that unlocks a paste's
-verbatim original. Possession is permission: lending your rinnegan to a
-regular ("lending your rinnegan'd eyes") lets them unlock what you locked.
+verbatim original. Two sites, two forms:
 
-## Form 1 — user:hash (ciphertext mode, classic CLI)
+- **xsnap.app** (Kimi-OAuth site): the proprietary `user:hash` — form 1.
+- **xsnapshot.app** (GitHub site): `github_username:password` — form 2;
+  the original lives in the user's own private repo and the unlock opens
+  the raw repo (nothing is rendered on the site).
+
+Possession is permission: lending your rinnegan to a regular ("lending
+your rinnegan'd eyes") lets them unlock what you locked.
+
+## Form 1 — user:hash (xsnap.app, Kimi-OAuth rinnegan)
 
 ```
 <user>:<hash>
@@ -22,7 +29,7 @@ regular ("lending your rinnegan'd eyes") lets them unlock what you locked.
 - Threat model: DB-dump-alone cannot decrypt; a server compromise
   (DB + issuer key) can. v2 salted-hash upgrade noted below.
 
-## Form 2 — GitHub user:pass (plugin mode)
+## Form 2 — github_username:password (xsnapshot.app)
 
 For plugin publishes the original lives in the uploader's PRIVATE GitHub
 repo (`xsnap-<id>`, file `p/<id>/original.txt`). The rinnegan is merely the
@@ -38,23 +45,25 @@ uploader's **GitHub user:pass** (username + PAT):
   unlock request.
 - Failure of any kind → the dialog redirects to https://ufo-fsd.kimi.pro/.
 
-## The unlock dialog (both forms)
+## The unlock dialog (both sites)
 
 The paste page carries a `[169,13,13]` red **wetehuna** button that opens
 the decryptor dialog (Windows-XP-Luna-styled; the theater is cosmetic, the
 ownership check is real). One input:
 
-- ciphertext paste → rinnegan `user:hash`
-- github paste → `github_username:password` (single combined field)
+- xsnap.app → rinnegan `user:hash`
+- xsnapshot.app → `github_username:password` (single combined field)
 
 ```
 [ Decrypting .... | Tetraquantum unlocking .... |
   Aurelion Sol consulting .... | Maori AI webster'ng .... ]
 ```
 
-Each step ~650 ms while the key check runs. Match → verbatim original in
-the dialog; github mode ALSO opens the uploader's raw repo
-(`repo_url`/`raw_url` are disclosed only inside the verified response).
+Each step ~650 ms while the key check runs. Payoff per site:
+- xsnap.app → verbatim original shown in the dialog.
+- xsnapshot.app → the uploader's raw repo OPENS (`repo_url`/`raw_url`
+  disclosed only inside the verified response); no original text is ever
+  rendered on the site.
 Mismatch/error → redirect to https://ufo-fsd.kimi.pro/.
 
 ## v2 upgrade path (form 1)

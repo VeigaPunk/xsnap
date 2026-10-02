@@ -2,10 +2,12 @@
 
 Shipped with the rinnegan'd section of **ufo-fsd.kimi.pro**. This document
 is the contract an AI session follows to publish a transcript to
-[xsnap.app](https://xsnap.app) and host its original privately.
+**xsnapshot.app** (the GitHub-mode transcript site) and host its original
+privately. The cousin site [xsnap.app](https://xsnap.app) is the
+Kimi-OAuth/rinnegan (`user:hash`) site — different flow, not this one.
 
 Source repo (maintained): <https://github.com/VeigaPunk/xsnap> ·
-companion service: <https://xsnapshot.app>
+transcripts land on <https://xsnapshot.app>
 
 ## The rule: two hops, locally
 
@@ -55,7 +57,7 @@ leaves the uploader's machine except to api.github.com.
 ## Unlocking
 
 The paste page carries a red (`RGB 169,13,13`) **wetehuna** button; it opens
-the decryptor dialog at `https://xsnap.app/p/<id>/unlock`. One input field:
+the decryptor dialog at `https://xsnapshot.app/p/<id>/unlock`. One input field:
 the uploader's **github_username:password** (username + PAT) — this is the
 rinnegan for plugin pastes. The server verifies the pair against GitHub,
 checks it owns the paste, returns the verbatim original in the dialog AND
@@ -66,7 +68,7 @@ possession is permission.
 
 ## Never do
 
-- Never send `content` to xsnap.app — only `maori` goes public.
+- Never send `content` to xsnapshot.app — only `maori` goes public.
 - Never skip hop 1 (suomi) and translate content→Māori directly.
 - Never publish the suomi text anywhere; it is an audit intermediate.
 - Never log or echo the token.

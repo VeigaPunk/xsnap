@@ -1,85 +1,70 @@
-# xsnap.app
+# xsnap — two transcript sites
 
-Anonymous, text-only, **public** pastebin for CLI session transcripts —
-with a twist: every paste's public page carries a two-hop rendering
-(**ANY language → suomi → te reo Māori**) produced entirely on the
-uploader's side, and the verbatim original is recoverable **only** with
-the uploader's **rinnegan**.
+Anonymous, text-only, **public** pastebins for CLI session transcripts.
+Every paste's public page carries a two-hop rendering (**ANY language →
+suomi → te reo Māori**) produced entirely on the uploader's side; the
+verbatim original opens only to key holders.
 
-Two publish modes:
+## The two websites
 
-- **Plugin** (AI sessions, keyless — ships with the rinnegan'd section of
-  [ufo-fsd.kimi.pro](https://ufo-fsd.kimi.pro)): the session translates
-  locally (`plugin/AGENT.md`), the plugin pushes the original to the
-  uploader's **private GitHub repo** and publishes only the Māori body.
-  Unlock = the uploader's **github_username:password**; the decryptor
-  dialog also opens the raw repo.
-- **CLI** (classic, no GitHub involvement): `user:hash` rinnegan;
-  original AES-256-GCM'd at rest on xsnap.
+| | [xsnap.app](https://xsnap.app) | [xsnapshot.app](https://xsnapshot.app) |
+|---|---|---|
+| Users | rinnegan'd (Kimi OAuth on [ufo-fsd.kimi.pro](https://ufo-fsd.kimi.pro)) | anyone with a GitHub account |
+| Upload | CLI with rinnegan `user:hash` | plugin (keyless) — session translates locally |
+| Original | AES-256-GCM at rest on xsnap | uploader's own **private GitHub repo** |
+| Unlock key | proprietary rinnegan `user:hash` | simple `github_username:password` |
+| Unlock payoff | verbatim original in the dialog | the user's raw repo **opens** |
 
-Public pages: anonymous, no JS, crawlable (robots + sitemap), immutable;
-no uploader identity, no `user@host` tokens, no repo coordinates.
-
-> This repo previously hosted the xsnap.app → xsnapshot.app redirect
-> landing (kept in git history). Companion flagship: [xsnapshot.app](https://xsnapshot.app).
+Both dialogs: Windows-XP styled, `[169,13,13]` wetehuna button on the
+paste page opens them, the four-step theater
+(`Decrypting .... | Tetraquantum unlocking .... | Aurelion Sol consulting .... | Maori AI webster'ng ....`)
+runs over the real key check, and any failure redirects to
+ufo-fsd.kimi.pro.
 
 ## Layout
 
 | Area | Path |
 |---|---|
-| App (routes, crypto, pages, XP unlock dialog) | `worker/` |
-| CLI (local 2-hop renderer, QUIC-first, AdGuard-CA) | `cli/` |
-| Keyless session plugin + agent guidance | `plugin/` |
-| Local dev runner | `dev/server.ts` |
+| xsnap.app worker (rinnegan) | `worker/` |
+| xsnapshot.app worker (github, route-limited) | `xsnapshot-site/` |
+| CLI (xsnap.app) + local 2-hop renderer | `cli/` |
+| Keyless plugin + agent guidance (xsnapshot.app) | `plugin/` |
+| Dev runners (:8787 / :8788) | `dev/` |
 | Everything-to-everything map | **`docs/PATHS.md`** |
-| Rinnegan spec (user:hash + github user:pass) | `docs/RINNEGAN.md` |
+| Credential spec (both forms) | `docs/RINNEGAN.md` |
 | System design | `docs/ARCHITECTURE.md` |
-| Cloudflare deploy + domain cutover | `docs/DEPLOY.md` |
+| Deploys (both workers) | `docs/DEPLOY.md` |
 
 ## Quickstart (local)
 
 ```bash
-bun dev/server.ts                      # http://localhost:8787 (SQLite dev DB)
+bun dev/server.ts                     # xsnap.app   → :8787
+bun dev/server-xsnapshot.ts           # xsnapshot.app → :8788
 
-# classic CLI mode
+# xsnap.app — rinnegan CLI flow
 RIN=$(curl -s -X POST localhost:8787/dev/rinnegan -d '{"user":"you"}' | jq -r .rinnegan)
-node cli/xsnap.js upload -whole   -f session.log  -r "$RIN" --api http://localhost:8787
-node cli/xsnap.js decrypt <id>    -r "$RIN" --api http://localhost:8787
+node cli/xsnap.js upload -whole -f session.log -r "$RIN" --api http://localhost:8787
+node cli/xsnap.js decrypt <id> -r "$RIN" --api http://localhost:8787
 
-# plugin mode (session translates; needs a GitHub PAT)
-cat payload.json | GITHUB_TOKEN=ghp_… node plugin/xsnap.mjs --api http://localhost:8787
+# xsnapshot.app — plugin flow (session translates; needs a GitHub PAT)
+cat payload.json | GITHUB_TOKEN=ghp_… node plugin/xsnap.mjs --api http://localhost:8788
 ```
 
-Regression loop: `bash test/smoke.sh` — both modes: mint → upload/publish →
-scrub & leak checks → unlock surfaces → 401/403 → robots/sitemap → slicing
-modes → two-hop corpus lockstep.
-
-## Unlock UX
-
-Each paste page carries a `RGB(169,13,13)` red **wetehuna** button → the
-decryptor dialog (Windows-XP styled):
-
-```
-[ Decrypting .... | Tetraquantum unlocking .... |
-  Aurelion Sol consulting .... | Maori AI webster'ng .... ]
-```
-
-Key check runs under the theater: match → verbatim original (+ the raw
-repo opens for plugin pastes); mismatch/error → redirect to
-ufo-fsd.kimi.pro. Lending your rinnegan'd eyes to a regular = sharing the
-key; possession is permission.
+Regression across both sites: `bash test/smoke.sh` — mint → upload →
+keyless publish → scrub & leak checks → dialogs → 401/403 →
+robots/sitemap → slicing modes → two-hop corpus lockstep.
 
 ## CLI transport
 
-QUIC (HTTP/3) preferred via `curl --http3-only`; TCP TLS fallback; the TLS
-trust anchor is the **AdGuard-minted CA** (the root AdGuard mints on the
-fly once installed) when configured: `--ca PATH`, `XSNAP_CA`,
-`~/.config/xsnap/adguard-ca.pem`, or well-known AdGuard Home paths.
+QUIC (HTTP/3) preferred via `curl --http3-only`; TCP TLS fallback; TLS
+trust anchor is the **AdGuard-minted CA** when configured (`--ca`,
+`XSNAP_CA`, `~/.config/xsnap/adguard-ca.pem`, AdGuard Home paths).
 
 ## Deploy
 
-Worker `xsnap-paste` + D1 — see `docs/DEPLOY.md`. Never deploy over the
-shared `xsnapshot` Cloudflare Pages project.
+Workers `xsnap-paste` (xsnap.app) and `xsnapshot-paste`
+(route-limited on xsnapshot.app) — `docs/DEPLOY.md`. Never deploy over
+the shared `xsnapshot` Cloudflare Pages project.
 
 ## Wire
 

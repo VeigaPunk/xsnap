@@ -1,0 +1,24 @@
+# xsnapshot-paste — GitHub-mode transcript worker for xsnapshot.app.
+# Route-limited so the existing X-snapshot Cloudflare Pages site on the
+# same domain is untouched. See docs/DEPLOY.md (cousin: root wrangler.toml
+# for xsnap.app, the Kimi-OAuth rinnegan site).
+name = "xsnapshot-paste"
+main = "index.ts"
+compatibility_date = "2026-09-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "xsnapshot-pastes"
+# wrangler d1 create xsnapshot-pastes → paste the id here
+database_id = "SET-ME-FROM-wrangler-d1-create"
+
+[vars]
+ORIGIN = "https://xsnapshot.app"
+
+# Routes (zone must be the xsnapshot.app zone):
+#   xsnapshot.app/p/*
+#   xsnapshot.app/api/publish
+#   xsnapshot.app/api/unlock
+# If a route/custom-domain conflict with the Pages project ever bites,
+# fall back to a dedicated hostname (e.g. t.xsnapshot.app) — see
+# docs/DEPLOY.md.
